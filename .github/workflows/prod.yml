@@ -1,0 +1,42 @@
+name: Deploy Docker Image
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: 'Production'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Build and push Docker image
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          RELEASE_CODE=${{ github.sha }}
+          docker build -t safka-api .
+          docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+          docker tag safka-api $DOCKER_USERNAME/safka-api:$RELEASE_CODE
+          docker push $DOCKER_USERNAME/safka-api:$RELEASE_CODE
+
+      - name: SSH into remote server and activate container
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}
+            DOCKER_PASSWORD="${{ secrets.DOCKER_PASSWORD }}"
+            RELEASE_CODE=${{ github.sha }}
+            podman login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+            podman pull $DOCKER_USERNAME/safka-api:$RELEASE_CODE
+            podman stop safka-api
+            podman rm -f safka-api
+            podman run -d --name "safka-api" -p 1323:80 $DOCKER_USERNAME/safka-api:$RELEASE_CODE
