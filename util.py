@@ -1,17 +1,13 @@
 import requests
 from bs4 import BeautifulSoup
-from bs4.element import Tag
 import json
 
 config = json.loads(open("config.json").read())
 
 class DateInformation:
-    def __init__(self, html: Tag) -> None:
-        portions: list[Tag] = html.find_all("td")
-        self.date = portions[0].text
-        food = portions[1].find_all("p")
-        self.food = [entry.text.replace(u"\xa0", "").strip() for entry in food]
-        self.food = [entry for entry in self.food if entry != ""]
+    def __init__(self, day: str, food_items: list[str]) -> None:
+        self.date = day
+        self.food = food_items
                 
     def get_json(self):
         return {
@@ -24,7 +20,24 @@ def fetch_menu_html():
     return BeautifulSoup(html.text, 'html.parser')
 
 def scrape_menu_json(soup: BeautifulSoup) -> list[DateInformation]:
-    table_bodies = soup.find_all("tbody")[0]
-    dates = table_bodies.find_all("tr")
+    menu_items = []
     
-    return [DateInformation(date) for date in dates]    
+    # Process only the main tag
+    main_content = soup.find("main", id="main")
+    if not main_content:
+        return menu_items
+    
+    # Find all <p> tags containing <strong> for day names
+    for paragraph in main_content.find_all("p"):
+        strong_tag = paragraph.find("strong")
+        if strong_tag:
+            day_name = strong_tag.text.strip()
+            
+            # Find the next sibling which should be a <ul> containing menu items
+            ul = paragraph.find_next_sibling("ul")
+            
+            if ul:
+                food_items = [li.text.strip() for li in ul.find_all("li")]
+                menu_items.append(DateInformation(day_name, food_items))
+    
+    return menu_items
